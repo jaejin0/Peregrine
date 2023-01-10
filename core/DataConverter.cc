@@ -202,6 +202,22 @@ namespace Peregrine
       }
     }
     
+    int count_comma(std::string s) {
+      int count = 0;
+      for (long unsigned int i = 0; i < s.size(); i++)
+        if (s[i] == ',') count++;
+      return count;
+    }
+
+    bool isNum (std::string str) {
+        for (long unsigned int i = 0; i < str.size(); i++) {
+            if (!isdigit(str[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void convert_data(const std::string &edge_file, const std::string &label_file, const std::string &out_dir)
     {
       auto t1 = utils::get_timestamp();
@@ -321,7 +337,7 @@ namespace Peregrine
     
       // clear unused memory
       degree_maps.clear();
-    
+      
       // populate the in-memory graph
       {
         size_t task_size = edge_file_size / nthreads;
@@ -428,24 +444,103 @@ namespace Peregrine
           std::string output_labels(out_dir + "/labels.bin");
           std::ofstream ofile(output_labels.c_str(), std::ios::binary | std::ios::trunc);
     
-          std::string line;
-          while (std::getline(ifile, line))
+          // initializing variables
+          std::string line, label, key;
+          uint32_t vertex = 0;
+          int col_size = 0;
+          uint32_t row_index = 1; // start from 1
+          std::string empty = "empty_key"; // string of key value for hash map when label is empty 
+          std::vector<std::unordered_map<std::string, uint32_t>> table;
+
+          // first row
+          getline(ifile, line);
+          while (line[0] == '#') {
+              getline(ifile, line);
+          }
+          col_size = count_comma(line) + 1;
+          std::stringstream str(line);
+          bool isVertex = true;
+          bool isConvertible = true;
+          while(getline(str, label, ',')) {
+              if (isVertex) {
+                  if (isNum(label)) {
+                      vertex = static_cast<uint32_t>(std::stoul(label));
+                  } else isConvertible = false;
+              }
+              isVertex = false;
+              std::unordered_map<std::string, uint32_t> col;
+              key = (label == "") ? empty : label;
+              col[key] = row_index;
+              table.push_back(col);
+          }
+          if ((int)table.size() < col_size) {
+              std::unordered_map<std::string, uint32_t> col;
+              col[empty] = row_index;
+              table.push_back(col);
+          }
+          // std::cout << col_size << std::endl;
+
+          uint32_t* new_u_label = new uint32_t[col_size];
+          new_u_label[0] = ids_rev_map[vertex]+1;
+          // std::cout << new_u_label[0] << " ";
+          for (int i = 1; i < col_size; i++) {
+              new_u_label[i] = 1;
+              // std::cout << new_u_label[i] << " ";
+          }
+          // std::cout << std::endl;
+          if (new_u_label[0] != 0 && isConvertible) // ids_rev_map[u] != -1
           {
-            // easy to predict properly
-            if (line[0] == '#') continue;
-            std::istringstream iss(line);
-    
-            uint32_t u;
-            uint32_t new_u_label[2];
-            iss >> u >> new_u_label[1];
-            new_u_label[0] = ids_rev_map[u]+1;
-    
-            if (new_u_label[0] != 0) // ids_rev_map[u] != -1
-            {
-              ofile.write(reinterpret_cast<char *>(&new_u_label[0]), 2*sizeof(uint32_t));
+          ofile.write(reinterpret_cast<char *>(&new_u_label[0]), col_size*sizeof(uint32_t));
+          }
+          delete[] new_u_label;
+          
+          while(getline(ifile, line)) {
+              if (line[0] == '#') continue;
+              row_index++;
+              vertex = 0;
+              std::stringstream str(line);
+              int cur_col = 0;
+              isVertex = true;
+              uint32_t* new_u_label = new uint32_t[col_size];
+              while(getline(str, label, ',')) {  
+                  if (isVertex) {
+                      vertex = static_cast<uint32_t>(std::stoul(label));
+                      new_u_label[0] = ids_rev_map[vertex]+1;
+                      isVertex = false;  
+                      // std::cout << new_u_label[0] << " ";
+                      cur_col++;
+                      continue;
+                  }
+                  key = (label == "") ? empty : label;
+                  
+                  if (table[cur_col][key] != 0) {
+                      new_u_label[cur_col] = table[cur_col][key];
+                  } else {
+                      table[cur_col][key] = row_index;
+                      new_u_label[cur_col] = row_index;
+                  }
+                  // std::cout << new_u_label[cur_col] << " "; 
+                  cur_col++;
+              }
+              if (cur_col < col_size) {
+                  if (table[cur_col][empty] != 0) {
+                      new_u_label[cur_col] = table[cur_col][empty];
+                  } else {
+                      table[cur_col][empty] = row_index;
+                      new_u_label[cur_col] = row_index;
+                  }
+                  // std::cout << new_u_label[cur_col] << " ";
+              }
+
+              // std::cout << std::endl;
+              if (new_u_label[0] != 0) // ids_rev_map[u] != -1
+              {
+              ofile.write(reinterpret_cast<char *>(&new_u_label[0]), col_size*sizeof(uint32_t));
+              }
+              delete[] new_u_label;
             }
           }
-        }
+        
         auto t16 = utils::get_timestamp();
         utils::Log{} << "Converted labels to binary format in " << (t16-t15)/1e6 << "s" << "\n";
       }
