@@ -227,7 +227,9 @@ namespace Peregrine
         uint32_t buf[col_size];
         ifile.read(reinterpret_cast<char *>(buf), col_size*sizeof(uint32_t));
         for (int i = 0; i < col_size; i++) {
-            ofile << buf[i] << ",";
+            ofile << buf[i];
+            if (i != col_size - 1) 
+              ofile << ",";
         } ofile << "\n";
       }
       ofile.close();
