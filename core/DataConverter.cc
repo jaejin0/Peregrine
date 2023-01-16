@@ -218,6 +218,21 @@ namespace Peregrine
         return true;
     }
 
+    void convert_back(const std::string &label_file, const std::string &out_dir, int vertex_count, int col_size) {
+      std::ifstream ifile(out_dir + "/labels.bin", std::ios::binary);
+      std::string output_labels(label_file);
+      std::ofstream ofile(output_labels.c_str(), std::ios::trunc);
+
+      for (int i = 0; i < vertex_count; i++) {
+        uint32_t buf[col_size];
+        ifile.read(reinterpret_cast<char *>(buf), col_size*sizeof(uint32_t));
+        for (int i = 0; i < col_size; i++) {
+            ofile << buf[i] << ",";
+        } ofile << "\n";
+      }
+      ofile.close();
+    }
+
     void convert_data(const std::string &edge_file, const std::string &label_file, const std::string &out_dir)
     {
       auto t1 = utils::get_timestamp();
@@ -478,16 +493,12 @@ namespace Peregrine
               col[empty] = row_index;
               table.push_back(col);
           }
-          // std::cout << col_size << std::endl;
 
           uint32_t* new_u_label = new uint32_t[col_size];
           new_u_label[0] = ids_rev_map[vertex]+1;
-          // std::cout << new_u_label[0] << " ";
           for (int i = 1; i < col_size; i++) {
               new_u_label[i] = 1;
-              // std::cout << new_u_label[i] << " ";
           }
-          // std::cout << std::endl;
           if (new_u_label[0] != 0 && isConvertible) // ids_rev_map[u] != -1
           {
           ofile.write(reinterpret_cast<char *>(&new_u_label[0]), col_size*sizeof(uint32_t));
@@ -506,8 +517,7 @@ namespace Peregrine
                   if (isVertex) {
                       vertex = static_cast<uint32_t>(std::stoul(label));
                       new_u_label[0] = ids_rev_map[vertex]+1;
-                      isVertex = false;  
-                      // std::cout << new_u_label[0] << " ";
+                      isVertex = false;
                       cur_col++;
                       continue;
                   }
@@ -519,7 +529,6 @@ namespace Peregrine
                       table[cur_col][key] = row_index;
                       new_u_label[cur_col] = row_index;
                   }
-                  // std::cout << new_u_label[cur_col] << " "; 
                   cur_col++;
               }
               if (cur_col < col_size) {
@@ -529,10 +538,7 @@ namespace Peregrine
                       table[cur_col][empty] = row_index;
                       new_u_label[cur_col] = row_index;
                   }
-                  // std::cout << new_u_label[cur_col] << " ";
               }
-
-              // std::cout << std::endl;
               if (new_u_label[0] != 0) // ids_rev_map[u] != -1
               {
               ofile.write(reinterpret_cast<char *>(&new_u_label[0]), col_size*sizeof(uint32_t));
